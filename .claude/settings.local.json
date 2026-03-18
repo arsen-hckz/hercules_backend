@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(.venv/Scripts/django-admin startproject:*)",
+      "Bash(.venv/Scripts/python manage.py startapp users)",
+      "Bash(.venv/Scripts/python manage.py startapp nutrition)",
+      "Bash(.venv/Scripts/python manage.py startapp workouts)",
+      "Bash(.venv/Scripts/python manage.py startapp social)"
+    ]
+  }
+}
