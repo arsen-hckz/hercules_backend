@@ -3,11 +3,11 @@ from django.conf import settings
 
 
 class FoodItem(models.Model):
-    # Sourced from Open Food Facts API, cached locally
+    # Sourced from Open Food Facts API, cached locally, or user-submitted
     name = models.CharField(max_length=200)
     brand = models.CharField(max_length=200, blank=True)
     barcode = models.CharField(max_length=50, blank=True, db_index=True)
-    off_id = models.CharField(max_length=100, blank=True, unique=True)  # Open Food Facts ID
+    off_id = models.CharField(max_length=100, blank=True, unique=True)
 
     # Nutrition per 100g
     calories = models.FloatField(default=0)
@@ -16,6 +16,13 @@ class FoodItem(models.Model):
     fat = models.FloatField(default=0)
     fiber = models.FloatField(default=0)
     sugars = models.FloatField(default=0)
+
+    # User submissions
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='submitted_foods'
+    )
+    is_verified = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

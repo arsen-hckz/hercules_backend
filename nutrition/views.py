@@ -12,6 +12,18 @@ from .serializers import FoodItemSerializer, RecipeSerializer, MealLogSerializer
 
 # ─── Food Items ──────────────────────────────────────────────────────────────
 
+class SubmitFoodView(generics.CreateAPIView):
+    serializer_class = FoodItemSerializer
+
+    def perform_create(self, serializer):
+        import uuid
+        serializer.save(
+            submitted_by=self.request.user,
+            is_verified=False,
+            off_id=f'user-{self.request.user.id}-{uuid.uuid4().hex[:8]}',
+        )
+
+
 class FoodItemSearchView(generics.ListAPIView):
     serializer_class = FoodItemSerializer
     filter_backends = [filters.SearchFilter]
@@ -41,27 +53,55 @@ class FoodItemSearchView(generics.ListAPIView):
 
 
 def _fetch_from_off(query):
-    url = f'{settings.OPEN_FOOD_FACTS_URL}/search'
-    params = {
-        'search_terms': query,
-        'search_simple': 1,
-        'action': 'process',
-        'json': 1,
+    """
+    Search Open Food Facts with Greek-first priority:
+    1. Greece only
+    2. EU fallback
+    3. Global fallback
+    Skips products with missing/zero calorie data.
+    """
+    base_url = f'{settings.OPEN_FOOD_FACTS_URL}/search'
+    fields = 'id,product_name,brands,code,nutriments,countries_tags'
+    base_params = {
+        'q': query,
         'page_size': 20,
-        'fields': 'id,product_name,brands,code,nutriments',
+        'fields': fields,
     }
-    try:
-        resp = requests.get(url, params=params, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception:
-        return []
+
+    attempts = [
+        {**base_params, 'countries_tags': 'en:greece'},
+        {**base_params, 'countries_tags': 'en:european-union'},
+        base_params,
+    ]
+
+    products = []
+    for params in attempts:
+        try:
+            resp = requests.get(base_url, params=params, timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+            candidates = [
+                p for p in data.get('products', [])
+                if p.get('product_name')
+                and p.get('nutriments', {}).get('energy-kcal_100g')
+            ]
+            if candidates:
+                products = candidates
+                break
+        except Exception:
+            continue
 
     items = []
-    for product in data.get('products', []):
+    seen = set()
+    for product in products:
+        off_id = product.get('id') or product.get('code', '')
+        if not off_id or off_id in seen:
+            continue
+        seen.add(off_id)
+
         n = product.get('nutriments', {})
         food, _ = FoodItem.objects.get_or_create(
-            off_id=product.get('id') or product.get('code', ''),
+            off_id=off_id,
             defaults={
                 'name': product.get('product_name', 'Unknown'),
                 'brand': product.get('brands', ''),
