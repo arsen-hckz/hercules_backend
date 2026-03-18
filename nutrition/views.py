@@ -23,10 +23,6 @@ def barcode_lookup(request, barcode):
     if food:
         return Response(FoodItemSerializer(food).data)
 
-    cached = cache.get(f'off_barcode_{barcode}')
-    if cached:
-        return Response(cached)
-
     try:
         url = f'{settings.OPEN_FOOD_FACTS_URL}/product/{barcode}'
         resp = requests.get(url, params={'fields': 'id,product_name,brands,code,nutriments'}, timeout=8)
@@ -50,9 +46,7 @@ def barcode_lookup(request, barcode):
                 'sugars': n.get('sugars_100g', 0) or 0,
             }
         )
-        result = FoodItemSerializer(food).data
-        cache.set(f'off_barcode_{barcode}', result, timeout=60 * 60 * 24 * 7)
-        return Response(result)
+        return Response(FoodItemSerializer(food).data)
     except Exception:
         return Response({'detail': 'Could not reach Open Food Facts.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
