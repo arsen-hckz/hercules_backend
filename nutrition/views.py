@@ -12,6 +12,51 @@ from .serializers import FoodItemSerializer, RecipeSerializer, MealLogSerializer
 
 # ─── Food Items ──────────────────────────────────────────────────────────────
 
+@api_view(['GET'])
+def barcode_lookup(request, barcode):
+    """
+    Lookup a food item by barcode.
+    1. Check local DB first.
+    2. If not found, fetch from Open Food Facts by barcode and cache locally.
+    """
+    food = FoodItem.objects.filter(barcode=barcode).first()
+    if food:
+        return Response(FoodItemSerializer(food).data)
+
+    cached = cache.get(f'off_barcode_{barcode}')
+    if cached:
+        return Response(cached)
+
+    try:
+        url = f'{settings.OPEN_FOOD_FACTS_URL}/product/{barcode}'
+        resp = requests.get(url, params={'fields': 'id,product_name,brands,code,nutriments'}, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        product = data.get('product')
+        if not product or not product.get('product_name'):
+            return Response({'detail': 'Product not found.'}, status=status.HTTP_404_NOT_FOUND)
+        n = product.get('nutriments', {})
+        food, _ = FoodItem.objects.get_or_create(
+            off_id=product.get('id') or barcode,
+            defaults={
+                'name': product.get('product_name', 'Unknown'),
+                'brand': product.get('brands', ''),
+                'barcode': barcode,
+                'calories': n.get('energy-kcal_100g', 0) or 0,
+                'protein': n.get('proteins_100g', 0) or 0,
+                'carbs': n.get('carbohydrates_100g', 0) or 0,
+                'fat': n.get('fat_100g', 0) or 0,
+                'fiber': n.get('fiber_100g', 0) or 0,
+                'sugars': n.get('sugars_100g', 0) or 0,
+            }
+        )
+        result = FoodItemSerializer(food).data
+        cache.set(f'off_barcode_{barcode}', result, timeout=60 * 60 * 24 * 7)
+        return Response(result)
+    except Exception:
+        return Response({'detail': 'Could not reach Open Food Facts.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
 class SubmitFoodView(generics.CreateAPIView):
     serializer_class = FoodItemSerializer
 
