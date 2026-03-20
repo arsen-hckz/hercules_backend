@@ -22,8 +22,6 @@ class Exercise(models.Model):
     ]
 
     name = models.CharField(max_length=200, unique=True)
-    muscle_group = models.ForeignKey(MuscleGroup, on_delete=models.SET_NULL, null=True, related_name='exercises')
-    secondary_muscles = models.ManyToManyField(MuscleGroup, blank=True, related_name='secondary_exercises')
     equipment = models.CharField(max_length=20, choices=EQUIPMENT_CHOICES, default='other')
     description = models.TextField(blank=True)
     is_custom = models.BooleanField(default=False)
@@ -37,6 +35,28 @@ class Exercise(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def primary_muscle(self):
+        """Muscle group with the highest activation level."""
+        top = self.muscle_activations.order_by('-level').first()
+        return top.muscle_group if top else None
+
+
+class ExerciseMuscleActivation(models.Model):
+    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE, related_name='muscle_activations')
+    muscle_group = models.ForeignKey(MuscleGroup, on_delete=models.CASCADE, related_name='activations')
+    level = models.PositiveSmallIntegerField(
+        default=5,
+        help_text='Activation level 1–10 (10 = primary mover, 1 = minimal)'
+    )
+
+    class Meta:
+        unique_together = [('exercise', 'muscle_group')]
+        ordering = ['-level']
+
+    def __str__(self):
+        return f'{self.exercise.name} — {self.muscle_group.name} ({self.level}/10)'
 
 
 class WorkoutSession(models.Model):

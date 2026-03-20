@@ -1,10 +1,10 @@
-from rest_framework import generics, status, filters
+from rest_framework import generics, status, filters, permissions
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Exercise, MuscleGroup, WorkoutSession
+from .models import Exercise, ExerciseMuscleActivation, MuscleGroup, WorkoutSession
 from .serializers import (
-    ExerciseSerializer, MuscleGroupSerializer,
+    ExerciseSerializer, ExerciseMuscleActivationSerializer, MuscleGroupSerializer,
     WorkoutSessionSerializer, WorkoutSessionListSerializer
 )
 
@@ -18,7 +18,7 @@ class MuscleGroupListView(generics.ListAPIView):
 class ExerciseListCreateView(generics.ListCreateAPIView):
     serializer_class = ExerciseSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['equipment', 'muscle_group']
+    filterset_fields = ['equipment']
     search_fields = ['name']
 
     def get_queryset(self):
@@ -29,7 +29,10 @@ class ExerciseListCreateView(generics.ListCreateAPIView):
         )
 
     def perform_create(self, serializer):
-        serializer.save(is_custom=True, created_by=self.request.user)
+        if self.request.user.is_staff:
+            serializer.save(is_custom=False)
+        else:
+            serializer.save(is_custom=True, created_by=self.request.user)
 
 
 class ExerciseDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -153,3 +156,45 @@ def diet_workout_correlation(request):
         })
 
     return Response(result)
+
+
+class ExerciseMuscleActivationCreateView(generics.CreateAPIView):
+    """Add a muscle group activation to an exercise."""
+    serializer_class = ExerciseMuscleActivationSerializer
+
+    def perform_create(self, serializer):
+        exercise = generics.get_object_or_404(Exercise, pk=self.kwargs['exercise_id'])
+        serializer.save(exercise=exercise)
+
+
+class ExerciseMuscleActivationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Edit (level) or delete a single muscle activation."""
+    serializer_class = ExerciseMuscleActivationSerializer
+    queryset = ExerciseMuscleActivation.objects.all()
+
+
+class AdminExerciseListView(generics.ListAPIView):
+    """Admin: all exercises, no pagination."""
+    serializer_class = ExerciseSerializer
+    permission_classes = [permissions.IsAdminUser]
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    search_fields = ['name']
+    filterset_fields = ['equipment']
+    pagination_class = None
+    queryset = Exercise.objects.prefetch_related('muscle_activations__muscle_group').order_by('name')
+
+
+class AdminSessionListView(generics.ListAPIView):
+    """Admin: view any user's workout sessions by passing ?user_id="""
+    serializer_class = WorkoutSessionListSerializer
+    permission_classes = [permissions.IsAdminUser]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['date']
+    ordering = ['-date']
+
+    def get_queryset(self):
+        user_id = self.request.query_params.get('user_id')
+        qs = WorkoutSession.objects.prefetch_related('entries__exercise', 'entries__sets')
+        if user_id:
+            qs = qs.filter(user_id=user_id)
+        return qs

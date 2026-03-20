@@ -63,6 +63,49 @@ class SubmitFoodView(generics.CreateAPIView):
         )
 
 
+@api_view(['GET'])
+def recent_foods(request):
+    """Return the last 10 distinct food items the user has logged."""
+    from django.db.models import Max
+    food_ids = (
+        MealLog.objects
+        .filter(user=request.user)
+        .values('items__food_item')
+        .annotate(last_used=Max('date'))
+        .exclude(items__food_item=None)
+        .order_by('-last_used')
+        .values_list('items__food_item', flat=True)
+    )
+    # Deduplicate while preserving order
+    seen = []
+    for fid in food_ids:
+        if fid not in seen:
+            seen.append(fid)
+        if len(seen) == 10:
+            break
+    foods = FoodItem.objects.in_bulk(seen)
+    ordered = [foods[fid] for fid in seen if fid in foods]
+    return Response(FoodItemSerializer(ordered, many=True).data)
+
+
+class FoodItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = FoodItemSerializer
+    permission_classes = [permissions.IsAdminUser]
+    queryset = FoodItem.objects.all()
+
+
+class FoodItemVerifyView(generics.UpdateAPIView):
+    serializer_class = FoodItemSerializer
+    permission_classes = [permissions.IsAdminUser]
+    queryset = FoodItem.objects.all()
+
+    def patch(self, request, *args, **kwargs):
+        food = self.get_object()
+        food.is_verified = True
+        food.save(update_fields=['is_verified'])
+        return Response(FoodItemSerializer(food).data)
+
+
 class FoodItemSearchView(generics.ListAPIView):
     serializer_class = FoodItemSerializer
     filter_backends = [filters.SearchFilter]
@@ -243,6 +286,37 @@ class MealLogDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return MealLog.objects.filter(user=self.request.user)
+
+
+class AdminFoodListView(generics.ListAPIView):
+    """Admin: list all foods with full detail, no pagination limit."""
+    serializer_class = FoodItemSerializer
+    permission_classes = [permissions.IsAdminUser]
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    search_fields = ['name', 'brand']
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = FoodItem.objects.all().order_by('name')
+        pending = self.request.query_params.get('pending')
+        if pending == '1':
+            qs = qs.filter(is_verified=False, submitted_by__isnull=False)
+        return qs
+
+
+class AdminMealLogListView(generics.ListAPIView):
+    """Admin: view any user's meal logs by passing ?user_id="""
+    serializer_class = MealLogSerializer
+    permission_classes = [permissions.IsAdminUser]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['date', 'meal_type']
+
+    def get_queryset(self):
+        user_id = self.request.query_params.get('user_id')
+        qs = MealLog.objects.prefetch_related('items__food_item', 'items__recipe')
+        if user_id:
+            qs = qs.filter(user_id=user_id)
+        return qs.order_by('-date')
 
 
 @api_view(['GET'])

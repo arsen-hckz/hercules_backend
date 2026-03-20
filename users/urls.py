@@ -15,4 +15,6 @@ urlpatterns = [
     path('profile/<str:username>/following/', views.FollowingListView.as_view(), name='following'),
     path('password-reset/', views.password_reset_request, name='password-reset'),
     path('password-reset/confirm/', views.password_reset_confirm, name='password-reset-confirm'),
+    path('admin/users/', views.AdminUserListView.as_view(), name='admin-users'),
+    path('admin/stats/', views.admin_stats, name='admin-stats'),
 ]

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import MuscleGroup, Exercise, WorkoutSession, WorkoutEntry, WorkoutSet
+from .models import MuscleGroup, Exercise, ExerciseMuscleActivation, WorkoutSession, WorkoutEntry, WorkoutSet
 
 
 class MuscleGroupSerializer(serializers.ModelSerializer):
@@ -8,17 +8,24 @@ class MuscleGroupSerializer(serializers.ModelSerializer):
         fields = ['id', 'name']
 
 
-class ExerciseSerializer(serializers.ModelSerializer):
+class ExerciseMuscleActivationSerializer(serializers.ModelSerializer):
     muscle_group = MuscleGroupSerializer(read_only=True)
     muscle_group_id = serializers.PrimaryKeyRelatedField(
-        queryset=MuscleGroup.objects.all(), source='muscle_group', write_only=True, required=False
+        queryset=MuscleGroup.objects.all(), source='muscle_group', write_only=True
     )
+
+    class Meta:
+        model = ExerciseMuscleActivation
+        fields = ['id', 'muscle_group', 'muscle_group_id', 'level']
+
+
+class ExerciseSerializer(serializers.ModelSerializer):
+    muscle_activations = ExerciseMuscleActivationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Exercise
         fields = [
-            'id', 'name', 'muscle_group', 'muscle_group_id',
-            'equipment', 'description', 'is_custom',
+            'id', 'name', 'equipment', 'description', 'is_custom', 'muscle_activations',
         ]
         read_only_fields = ['is_custom']
 

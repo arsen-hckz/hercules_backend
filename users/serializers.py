@@ -30,9 +30,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'gender', 'date_of_birth', 'height_cm', 'weight_kg',
             'goal', 'target_weight_kg', 'goal_deadline', 'activity_level',
             'bmi', 'tdee', 'followers_count', 'following_count', 'is_following',
-            'date_joined',
+            'is_staff', 'date_joined',
         ]
-        read_only_fields = ['email', 'date_joined']
+        read_only_fields = ['email', 'date_joined', 'is_staff']
 
     def get_bmi(self, obj):
         return obj.calculate_bmi()

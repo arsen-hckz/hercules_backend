@@ -1,5 +1,6 @@
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
@@ -23,6 +24,7 @@ class RegisterView(generics.CreateAPIView):
 
 class MeView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_object(self):
         return self.request.user
@@ -127,3 +129,50 @@ def password_reset_confirm(request):
     user.set_password(new_password)
     user.save(update_fields=['password'])
     return Response({'detail': 'Password reset successfully.'})
+
+
+# ─── Admin endpoints ──────────────────────────────────────────────────────────
+
+class AdminUserListView(generics.ListAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAdminUser]
+    queryset = User.objects.all().order_by('-date_joined')
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAdminUser])
+def admin_stats(request):
+    from datetime import date, timedelta
+    from social.models import Post
+    from nutrition.models import MealLog, FoodItem
+    from workouts.models import WorkoutSession
+
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+
+    return Response({
+        'users': {
+            'total': User.objects.count(),
+            'new_today': User.objects.filter(date_joined__date=today).count(),
+            'new_this_week': User.objects.filter(date_joined__date__gte=week_ago).count(),
+        },
+        'posts': {
+            'total': Post.objects.count(),
+            'today': Post.objects.filter(created_at__date=today).count(),
+        },
+        'meal_logs': {
+            'total': MealLog.objects.count(),
+            'today': MealLog.objects.filter(date=today).count(),
+        },
+        'workout_sessions': {
+            'total': WorkoutSession.objects.count(),
+            'today': WorkoutSession.objects.filter(date=today).count(),
+        },
+        'food_items': {
+            'total': FoodItem.objects.count(),
+            'pending_review': FoodItem.objects.filter(is_verified=False, submitted_by__isnull=False).count(),
+        },
+        'exercises': {
+            'total': WorkoutSession.objects.model._meta.apps.get_model('workouts', 'Exercise').objects.count(),
+        },
+    })
